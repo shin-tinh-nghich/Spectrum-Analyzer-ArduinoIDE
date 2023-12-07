@@ -10,7 +10,6 @@ void scrollText(const char *p);
 #include "spectrum.h"
 #include "DS1307_CFG.h"
 #include "button_rotary_led_composite.h"
-#include "remote.h"
 
 #define  DELAYTIME  100  // in milliseconds
 uint8_t string[54] = {'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', ' ', ' ', ' ', ' ', ' ', ' ', '\0'};
@@ -18,9 +17,6 @@ uint8_t string[54] = {'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!'
 void  setup() {
   // Set up button_rotary_led_composite
   setupBRLC();
-
-  // Setup IR remote
-  //setupIR();
 
   // ADC config
   setupADC();
@@ -38,7 +34,6 @@ void  setup() {
   OS.addTask(vISR_RotaryEncoder, 128);
   OS.addTask(vButton_Task, 128);
   OS.addTask(vLED_Task, 128);
-  //OS.addTask(vIR_task,128);
   OS.begin();
 }// end setup
 
@@ -85,86 +80,88 @@ void readSerial(void)
 }
 
 void appSerial() {
-  readSerial();
-  if (newMessageAvailable)  // there is a new message waiting
-  {
-    Serial.println((char* )newMessage);
-
-    uint8_t keyMess[5], valueMess[BUF_SIZE - 5];
-    for (int i = 0; i < 4; i++)
-      keyMess[i] = newMessage[i];
-    keyMess[4] = '\0';
-
-    int j = 0;
-    for (int i = 5; i < sizeof(newMessage); i++)
+  for (;;) {
+    readSerial();
+    if (newMessageAvailable)  // there is a new message waiting
     {
-      valueMess[j] = newMessage[i];
-      j++;
-    }
-    Serial.println((char* )keyMess);
-    Serial.println((char* )valueMess);
-
-    OS.delay(1);
-    if (strcmp((char* )keyMess, "time") == 0) {          // if received time
-      // data value: Jul 22 2022-12:34:56-
+      Serial.println((char* )newMessage);
+  
+      uint8_t keyMess[5], valueMess[BUF_SIZE - 5];
+      for (int i = 0; i < 4; i++)
+        keyMess[i] = newMessage[i];
+      keyMess[4] = '\0';
+  
       int j = 0;
-      uint8_t _time[15], _date[10];
-      uint8_t count = 0, pos[2] = {0};
-      for (int i = 0; i < sizeof(valueMess); i++) {
-        if (count == 2) break;
-        if (valueMess[i] == '-') {
-          pos[count] = i;
-          count++;
+      for (int i = 5; i < sizeof(newMessage); i++)
+      {
+        valueMess[j] = newMessage[i];
+        j++;
+      }
+      Serial.println((char* )keyMess);
+      Serial.println((char* )valueMess);
+  
+      OS.delay(1);
+      if (strcmp((char* )keyMess, "time") == 0) {          // if received time
+        // data value: Jul 22 2022-12:34:56-
+        int j = 0;
+        uint8_t _time[15], _date[10];
+        uint8_t count = 0, pos[2] = {0};
+        for (int i = 0; i < sizeof(valueMess); i++) {
+          if (count == 2) break;
+          if (valueMess[i] == '-') {
+            pos[count] = i;
+            count++;
+          }
         }
-      }
-      for (int i = 0; i < pos[0]; i++) {
-        _date[i] = valueMess[i];
-        j++;
-      }
-      _date[j] = '\0';
-      j = 0;
-      for (int i = pos[0] + 1; i < pos[1]; i++) {
-        _time[j] = valueMess[i];
-        j++;
-      }
-      _time[j] = '\0';
-
-      rtc.adjust(DateTime(_date, _time));
-      mx.clear();
-      newMessageAvailable = false;
-      for (byte i = 0; i < 3; i++) {
-        status_LED = 2;
-        OS.delay(1);
-      }
-      status_LED = 4;
-    } else if (strcmp((char* )keyMess, "mode") == 0) {
-      if (strcmp((char* )valueMess, "band") == 0) {
-        (band == 16) ? (band = 32) : (band = 16);
-        valueMess[0] = '\0';
+        for (int i = 0; i < pos[0]; i++) {
+          _date[i] = valueMess[i];
+          j++;
+        }
+        _date[j] = '\0';
+        j = 0;
+        for (int i = pos[0] + 1; i < pos[1]; i++) {
+          _time[j] = valueMess[i];
+          j++;
+        }
+        _time[j] = '\0';
+  
+        rtc.adjust(DateTime(_date, _time));
+        mx.clear();
+        newMessageAvailable = false;
+        for (byte i = 0; i < 3; i++) {
+          status_LED = 2;
+          OS.delay(1);
+        }
+        status_LED = 4;
+      } else if (strcmp((char* )keyMess, "mode") == 0) {
+        if (strcmp((char* )valueMess, "band") == 0) {
+          (band == 16) ? (band = 32) : (band = 16);
+          valueMess[0] = '\0';
+        } else {
+          (displaymode < 5) ? (displaymode++) : (displaymode = 1);
+          displayModeChange(displaymode);
+        }
+        newMessageAvailable = false;
+        for (byte i = 0; i < 3; i++) {
+          status_LED = 2;
+          OS.delay(1);
+        }
+        status_LED = 4;
+      } else if (strcmp((char* )keyMess, "text") == 0) {
+        uint8_t arrayLength = sizeof(valueMess) / sizeof(valueMess[0]);
+        memcpy(string, valueMess, sizeof(valueMess));
+        newMessageAvailable = false;
+        for (byte i = 0; i < 3; i++) {
+          status_LED = 2;
+          OS.delay(1);
+        }
+        status_LED = 4;
       } else {
-        (displaymode < 5) ? (displaymode++) : (displaymode = 1);
-        displayModeChange(displaymode);
+        newMessageAvailable = false;
       }
-      newMessageAvailable = false;
-      for (byte i = 0; i < 3; i++) {
-        status_LED = 2;
-        OS.delay(1);
-      }
-      status_LED = 4;
-    } else if (strcmp((char* )keyMess, "text") == 0) {
-      uint8_t arrayLength = sizeof(valueMess) / sizeof(valueMess[0]);
-      memcpy(string, valueMess, sizeof(valueMess));
-      newMessageAvailable = false;
-      for (byte i = 0; i < 3; i++) {
-        status_LED = 2;
-        OS.delay(1);
-      }
-      status_LED = 4;
-    } else {
-      newMessageAvailable = false;
     }
+    OS.delay(1);
   }
-  OS.delay(1);
 }
 
 void scrollText(const char *p)
